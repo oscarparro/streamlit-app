@@ -285,7 +285,7 @@ with tab2:
                     if mode_lower == "deteccion emociones":
                         # Fijamos el color rojo (en BGR: (0, 0, 255)) para todos los bounding boxes
                         box_color = (0, 0, 255)
-                        text = f"Emoción: {emotion}"
+                        text = f"Emocion: {emotion}"
                     elif mode_lower == "deteccion rostros":
                         if label not in ["Desconocido", "Error", "", "No detectado"]:
                             if label not in st.session_state.registered_colors:
