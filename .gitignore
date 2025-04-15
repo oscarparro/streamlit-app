@@ -4,5 +4,5 @@ __pycache__/
 # Ignore the app directory
 app/
 
-# Ignore the data directory
-data/
+#Ignore the app_antigua.py file
+app_antigua.py

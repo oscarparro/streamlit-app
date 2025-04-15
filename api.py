@@ -1,6 +1,9 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from transformers import AutoModelForImageClassification
+from torchvision import transforms
+import torch
 import numpy as np
 import cv2
 import face_recognition
@@ -25,6 +28,17 @@ prototxt_path = "model/deploy.prototxt"
 caffe_model_path = "model/res10_300x300_ssd_iter_140000.caffemodel"
 net = cv2.dnn.readNetFromCaffe(prototxt_path, caffe_model_path)
 
+# Cargar el modelo de detección de emociones desde Hugging Face
+emotion_model_name = "oscarparro/emotion_detection_vit"
+emotion_model = AutoModelForImageClassification.from_pretrained(emotion_model_name)
+
+# Transformaciones para preprocesar la imagen
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),  # Redimensionar la imagen al tamaño esperado por ViT
+    transforms.ToTensor(),         # Convertir la imagen a un tensor
+    transforms.Normalize([0.5], [0.5])  # Normalizar los valores de píxeles
+])
+
 def detect_faces_dnn_api(image, net, conf_threshold=0.7):
     (h, w) = image.shape[:2]
     blob = cv2.dnn.blobFromImage(image, scalefactor=1.0, size=(300, 300),
@@ -41,6 +55,27 @@ def detect_faces_dnn_api(image, net, conf_threshold=0.7):
             x2, y2 = min(w - 1, x2), min(h - 1, y2)
             boxes.append((x1, y1, x2 - x1, y2 - y1))
     return boxes
+
+def predict_emotion(face_img):
+    """
+    Predice la emoción en una imagen de rostro usando el modelo de Hugging Face.
+    """
+    # Convertir la imagen a RGB si es necesario
+    face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+    pil_image = Image.fromarray(face_img)
+
+    # Aplicar las transformaciones
+    input_tensor = transform(pil_image).unsqueeze(0)  # Añadir una dimensión batch
+
+    # Realizar la predicción
+    with torch.no_grad():
+        outputs = emotion_model(input_tensor)
+    probs = torch.nn.functional.softmax(outputs.logits, dim=1)
+    emotion = torch.argmax(probs, dim=1).item()
+
+    # Decodificar la etiqueta de la emoción
+    emotion_label = emotion_model.config.id2label[emotion]
+    return emotion_label
 
 # Diccionario global para almacenar los encodings de rostros registrados: nombre -> encoding facial
 registered_faces = {}
@@ -115,4 +150,9 @@ async def identify_face(file: UploadFile = File(...)):
     if not resultados:
         return {"name": "Desconocido"}
     best_match = min(resultados, key=resultados.get)
-    return {"name": best_match, "distance": resultados[best_match]}
+
+    # Recortar la cara para predecir la emoción
+    face_img = image[y:y + h, x:x + w]
+    emotion = predict_emotion(face_img)
+
+    return {"name": best_match, "distance": resultados[best_match], "emotion": emotion}

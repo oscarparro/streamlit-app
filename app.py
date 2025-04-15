@@ -47,6 +47,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 #########################
 # Configuración y funciones
 #########################
@@ -82,17 +83,20 @@ def generate_random_color():
 
 # Función para formatear la leyenda de Identificación
 def format_detected_labels(labels):
+    """
+    Formatea las etiquetas detectadas para mostrarlas en la leyenda, incluyendo la emoción.
+    """
     html = "<b>Rostros detectados:</b><br><br>"
-    for label in labels:
+    for label, emotion in labels:
         if label in ["Desconocido", "Error"]:
-            html += f"- {label}<br>"
+            html += f"- {label} (Emoción: {emotion})<br>"
         else:
             if label in st.session_state.registered_colors:
                 b, g, r = st.session_state.registered_colors[label]
                 color_str = f"rgb({r}, {g}, {b})"
-                html += f"- {label} <span style='display:inline-block;width:12px;height:12px;background-color:{color_str};border:1px solid #000;margin-left:4px;vertical-align:middle;'></span><br>"
+                html += f"- {label} (Emoción: {emotion}) <span style='display:inline-block;width:12px;height:12px;background-color:{color_str};border:1px solid #000;margin-left:4px;vertical-align:middle;'></span><br>"
             else:
-                html += f"- {label}<br>"
+                html += f"- {label} (Emoción: {emotion})<br>"
     return html
 
 def format_history_entry(reg):
@@ -175,19 +179,29 @@ with tab1:
 # Pestaña 2: Identificación
 #########################
 with tab2:
-
-    # Dos columnas para centrar cada botón en su columna
-    col_left, col_right = st.columns(2)
-    with col_left:
-        st.markdown("<div style='display: flex; justify-content: center;'>", unsafe_allow_html=True)
-        if st.button("Activar Cámara"):
-            st.session_state.identification_active = True
-        st.markdown("</div>", unsafe_allow_html=True)
-    with col_right:
-        st.markdown("<div style='display: flex; justify-content: center;'>", unsafe_allow_html=True)
-        if st.button("Detener Cámara"):
-            st.session_state.identification_active = False
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        .stButton button {
+            width: 100%;
+            height: 50px;
+            font-size: 18px;
+            display: block;
+            margin: 5 auto;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    col1, col2, col3 = st.columns([1, 2, 1], gap="small")
+    with col2:
+        subcolA, subcolB = st.columns([1, 1], gap="medium")
+        with subcolA:
+            if st.button("Activar Cámara"):
+                st.session_state.identification_active = True
+        with subcolB:
+            if st.button("Detener Cámara"):
+                st.session_state.identification_active = False
     
     # Contenedor para el feed de video (limitando su ancho pero sin afectar la imagen)
     st.markdown('<div class="camera-block">', unsafe_allow_html=True)
@@ -210,7 +224,7 @@ with tab2:
                 frame = cv2.flip(frame, 1)
                 faces = detect_faces_dnn(frame, net, conf_threshold=0.7)
                 if not current_labels or len(current_labels) != len(faces):
-                    current_labels = ["Desconocido"] * len(faces)
+                    current_labels = [("Desconocido", "N/A")] * len(faces)
                 if time.time() - last_identification >= 5:
                     nuevas_etiquetas = []
                     for (x, y, w, h) in faces:
@@ -221,12 +235,12 @@ with tab2:
                         try:
                             res_json = res.json()
                         except Exception:
-                            res_json = {"name": "Error"}
-                        nuevas_etiquetas.append(res_json.get("name", "Desconocido"))
+                            res_json = {"name": "Error", "emotion": "N/A"}
+                        nuevas_etiquetas.append((res_json.get("name", "Desconocido"), res_json.get("emotion", "N/A")))
                     current_labels = nuevas_etiquetas
                     last_identification = time.time()
                 for i, (x, y, w, h) in enumerate(faces):
-                    label = current_labels[i]
+                    label, emotion = current_labels[i]
                     if label in ["Desconocido", "Error"]:
                         box_color = UNKNOWN_COLOR
                     else:
@@ -234,7 +248,7 @@ with tab2:
                             st.session_state.registered_colors[label] = generate_random_color()
                         box_color = st.session_state.registered_colors[label]
                     cv2.rectangle(frame, (x, y), (x+w, y+h), box_color, 2)
-                    cv2.putText(frame, label, (x, y-10),
+                    cv2.putText(frame, f"{label} ({emotion})", (x, y-10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.9, box_color, 2)
                 feed_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), channels="RGB")
                 # Usamos la función para formatear la leyenda con recuadros de color
