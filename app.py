@@ -142,8 +142,33 @@ with tab1:
     img_file = st.camera_input("Captura de Rostro", label_visibility="collapsed")
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # Definimos el CSS para el botón centrado y su tamaño
+    st.markdown(
+        """
+        <style>
+        .centered-button-container {
+            display: flex;
+            justify-content: center; /* Centra horizontalmente */
+            margin-top: 1rem;       /* Ajusta espaciado si quieres */
+        }
+        .centered-button-container button {
+            width: 50% !important;   /* Ajusta el ancho (50%, 30%, etc.) */
+            height: 30px !important; /* Altura deseada */
+            font-size: 16px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     user_name = st.text_input("Nombre:", placeholder="Ingresa tu nombre", max_chars=20)
-    if st.button("Registrar"):
+
+    # Envolvemos st.button en un div con la clase "centered-button-container"
+    st.markdown('<div class="centered-button-container">', unsafe_allow_html=True)
+    clicked = st.button("Registrar")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if clicked:
         if img_file is None:
             st.error("Por favor, toma una foto primero.")
         elif user_name.strip() == "":
@@ -186,16 +211,20 @@ with tab1:
 # PESTAÑA 2: IDENTIFICACIÓN EN TIEMPO REAL
 #########################
 with tab2:
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         .stButton button {
             width: 100%;
             height: 50px;
             font-size: 18px;
-            margin: 5px auto;
+            display: block;
+            margin: 0 auto;
         }
         </style>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Selección de modo
     modo = st.selectbox(
@@ -211,10 +240,13 @@ with tab2:
 
     col1, col2, col3 = st.columns([1, 2, 1], gap="small")
     with col2:
-        if st.button("Activar Cámara"):
-            st.session_state.identification_active = True
-        if st.button("Detener Cámara"):
-            st.session_state.identification_active = False
+        subcolA, subcolB = st.columns([1, 1], gap="small")
+        with subcolA:
+            if st.button("Activar Cámara"):
+                st.session_state.identification_active = True
+        with subcolB:
+            if st.button("Detener Cámara"):
+                st.session_state.identification_active = False
 
     st.markdown('<div class="camera-block">', unsafe_allow_html=True)
     feed_placeholder = st.empty()
@@ -222,7 +254,10 @@ with tab2:
     legend_placeholder = st.empty()
 
     if st.session_state.identification_active:
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Prueba usando CAP_DSHOW si es Windows
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
         if not cap.isOpened():
             st.error("No se pudo abrir la cámara.")
         else:
