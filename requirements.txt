@@ -1,0 +1,8 @@
+streamlit 
+streamlit-webrtc
+opencv-python
+face_recognition
+fastapi
+uvicorn
+python-multipart
+requests
