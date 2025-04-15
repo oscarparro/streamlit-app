@@ -8,43 +8,41 @@ import base64
 import datetime
 import face_recognition
 
-# Configuración de la página
+# Configuración de la página y estilos CSS
 st.set_page_config(
     page_title="Face and Emotion Recognition System",
     page_icon="📷",
     initial_sidebar_state="collapsed"
 )
 
-# CSS para estilos
 st.markdown("""
 <style>
 .block-container { padding-top: 0.5rem !important; }
 .big-center-title { text-align: center; font-size: 2.0rem; font-weight: bold; margin-top: 1.5rem; margin-bottom: 0.5em; }
 .stTabs [data-baseweb="tab-list"] { justify-content: center; }
 .stTabs [data-baseweb="tab-list"] button { font-size: 1.2rem; }
-/* Contenedor para la cámara */
 .camera-block { max-width: 400px; margin: 0 auto; }
 </style>
 """, unsafe_allow_html=True)
 
 #######################################################
-# CONFIG GLOBAL
+# CONFIGURACIÓN GLOBAL Y VARIABLES
 #######################################################
-API_URL = "http://127.0.0.1:8000"  # Ajusta si tu FastAPI corre en otra URL
+API_URL = "http://127.0.0.1:8000"  # Ajusta según sea necesario
 
 prototxt_path = "model/deploy.prototxt"
 caffe_model_path = "model/res10_300x300_ssd_iter_140000.caffemodel"
 net = cv2.dnn.readNetFromCaffe(prototxt_path, caffe_model_path)
 
-# Intervalos de llamadas a la API
+# Intervalos de consulta a la API según modo
 MODE_INTERVALS = {
-    "Deteccion completa": 10,  # seg
+    "Deteccion completa": 10,
     "Deteccion emociones": 2,
     "Deteccion rostros": 5,
     "No hacer nada": 0
 }
 
-UNKNOWN_COLOR = (0, 255, 0)  # Verde en formato BGR
+UNKNOWN_COLOR = (0, 255, 0)  # Color predeterminado (verde)
 
 # ------------------------------------------------------
 # FUNCIONES AUXILIARES
@@ -70,26 +68,48 @@ def detect_faces_dnn(frame, net, conf_threshold=0.7):
 def generate_random_color():
     return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
-def format_detected_labels(labels):
+def format_detected_labels(labels, mode):
     """
-    Muestra la lista de (nombre, emoción) con HTML y colores.
+    Formatea la leyenda según el modo:
+      - Deteccion completa: muestra nombre, emoción y color.
+      - Deteccion rostros: muestra solo el nombre y el color.
+      - Deteccion emociones: muestra la emoción y un color fijo (rojo) para todos los bounding boxes.
     """
-    html = "<b>Rostros detectados:</b><br><br>"
-    for label, emotion in labels:
-        # label podría ser "Desconocido", "No detectado", un nombre real, etc.
-        if label in ["Desconocido", "Error", "", "No detectado"]:
-            html += f"- {label} (Emoción: {emotion})<br>"
-        else:
-            # Si el label está registrado, mostramos el color
-            if label in st.session_state.registered_colors:
-                b, g, r = st.session_state.registered_colors[label]
-                color_str = f"rgb({r}, {g}, {b})"
-                html += (f"- {label} (Emoción: {emotion}) "
-                         f"<span style='display:inline-block;width:12px;height:12px;"
-                         f"background-color:{color_str};border:1px solid #000;"
-                         f"margin-left:4px;vertical-align:middle;'></span><br>")
+    html = "<b>Resultados:</b><br><br>"
+    mode_lower = mode.lower().strip()
+    
+    if mode_lower == "deteccion completa":
+        for name, emotion in labels:
+            if name not in ["Desconocido", "Error", "", "No detectado"]:
+                if name in st.session_state.registered_colors:
+                    b, g, r = st.session_state.registered_colors[name]
+                    color_str = f"rgb({r}, {g}, {b})"
+                    html += f"- {name} (Emoción: {emotion}) <span style='display:inline-block;width:12px;height:12px;background-color:{color_str};border:1px solid #000;margin-left:4px;vertical-align:middle;'></span><br>"
+                else:
+                    html += f"- {name} (Emoción: {emotion})<br>"
             else:
-                html += f"- {label} (Emoción: {emotion})<br>"
+                html += f"- {name} (Emoción: {emotion})<br>"
+                
+    elif mode_lower == "deteccion rostros":
+        for name, _ in labels:
+            if name not in ["Desconocido", "Error", "", "No detectado"]:
+                if name in st.session_state.registered_colors:
+                    b, g, r = st.session_state.registered_colors[name]
+                    color_str = f"rgb({r}, {g}, {b})"
+                    html += f"- {name} <span style='display:inline-block;width:12px;height:12px;background-color:{color_str};border:1px solid #000;margin-left:4px;vertical-align:middle;'></span><br>"
+                else:
+                    html += f"- {name}<br>"
+            else:
+                html += f"- {name}<br>"
+
+    elif mode_lower == "deteccion emociones":
+        # Se usa color fijo (rojo) para todos los bounding boxes
+        fixed_color_str = "rgb(255, 0, 0)"
+        for idx, (_, emotion) in enumerate(labels):
+            html += f"- Emoción: {emotion} <span style='display:inline-block;width:12px;height:12px;background-color:{fixed_color_str};border:1px solid #000;margin-left:4px;vertical-align:middle;'></span><br>"
+    else:
+        html += "Modo no reconocido."
+        
     return html
 
 # ------------------------------------------------------
@@ -102,11 +122,11 @@ if "registered_colors" not in st.session_state:
 if "identification_active" not in st.session_state:
     st.session_state.identification_active = False
 if "current_mode" not in st.session_state:
-    st.session_state.current_mode = "Deteccion completa"  # Valor inicial
+    st.session_state.current_mode = "Deteccion completa"
 
-# ------------------------------------------------------
+#######################################################
 # TÍTULO
-# ------------------------------------------------------
+#######################################################
 st.markdown('<div class="big-center-title">Proyecto de Detección e Identificación de Rostros</div>', unsafe_allow_html=True)
 
 #######################################################
@@ -131,7 +151,6 @@ with tab1:
         else:
             file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
             frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-            # Detectamos rostros con DNN para asegurar que solo haya 1
             faces = detect_faces_dnn(frame, net, conf_threshold=0.7)
             if len(faces) != 1:
                 st.error(f"Para registrar, debe haber exactamente una cara (detectadas: {len(faces)})")
@@ -148,7 +167,6 @@ with tab1:
                     st.error("Error al decodificar la respuesta del servidor: " + res.text)
                     st.stop()
                 if "message" in result:
-                    # Asignar color aleatorio a este usuario (si no lo tiene)
                     if user_name not in st.session_state.registered_colors:
                         st.session_state.registered_colors[user_name] = generate_random_color()
                     st.success("¡Registro exitoso!")
@@ -165,11 +183,10 @@ with tab1:
                     st.error("Error en el registro: " + str(result))
 
 #########################
-# PESTAÑA 2: IDENTIFICACIÓN
+# PESTAÑA 2: IDENTIFICACIÓN EN TIEMPO REAL
 #########################
 with tab2:
-    st.markdown(
-        """
+    st.markdown("""
         <style>
         .stButton button {
             width: 100%;
@@ -178,9 +195,7 @@ with tab2:
             margin: 5px auto;
         }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """, unsafe_allow_html=True)
 
     # Selección de modo
     modo = st.selectbox(
@@ -188,11 +203,11 @@ with tab2:
         options=["Deteccion completa", "Deteccion emociones", "Deteccion rostros", "No hacer nada"],
         index=["Deteccion completa", "Deteccion emociones", "Deteccion rostros", "No hacer nada"].index(st.session_state.current_mode)
     )
-    # Si el modo cambió, desactivamos la cámara para forzar la reactivación con el nuevo modo
+    # Si el modo cambia, se reinicia la cámara para aplicar la nueva configuración
     if modo != st.session_state.current_mode:
         st.session_state.current_mode = modo
         st.session_state.identification_active = False
-        st.stop()  # En versiones recientes, podrías usar st.experimental_rerun()
+        st.stop()
 
     col1, col2, col3 = st.columns([1, 2, 1], gap="small")
     with col2:
@@ -213,7 +228,7 @@ with tab2:
         else:
             last_identification = time.time()
             current_labels = []
-            interval = MODE_INTERVALS[st.session_state.current_mode]  # 10, 2, 5, 0
+            interval = MODE_INTERVALS[st.session_state.current_mode]
 
             while st.session_state.identification_active:
                 ret, frame = cap.read()
@@ -224,13 +239,14 @@ with tab2:
                 frame = cv2.flip(frame, 1)  # Vista espejo
                 faces = detect_faces_dnn(frame, net, conf_threshold=0.7)
 
-                # Ajustar la lista de labels si cambia el # de rostros
+                # Actualiza la lista de labels si cambia el número de rostros
                 if len(current_labels) != len(faces):
                     current_labels = [("Desconocido", "N/A")] * len(faces)
 
-                # Verificar intervalo de llamadas a la API
+                # Consulta a la API si ha transcurrido el intervalo definido
                 if interval > 0 and time.time() - last_identification >= interval:
                     nuevas_etiquetas = []
+                    mode_lower = st.session_state.current_mode.lower().strip()
                     for (x, y, w, h) in faces:
                         face_img = frame[y:y+h, x:x+w]
                         _, img_encoded = cv2.imencode('.jpg', face_img)
@@ -241,8 +257,7 @@ with tab2:
                             res_json = res.json()
                         except Exception:
                             res_json = {"name": "Error", "emotion": "N/A"}
-
-                        mode_lower = st.session_state.current_mode.lower()
+                        
                         if mode_lower == "deteccion completa":
                             name = res_json.get("name", "Desconocido")
                             emotion = res_json.get("emotion", "N/A")
@@ -252,39 +267,48 @@ with tab2:
                             emotion = res_json.get("emotion", "N/A")
                             nuevas_etiquetas.append((name, emotion))
                         elif mode_lower == "deteccion rostros":
-                            # Integramos el "name" que viene en la respuesta
-                            # Si hay "error", no se detectó.
                             if "error" in res_json:
                                 nuevas_etiquetas.append(("No detectado", ""))
                             else:
-                                # Puede ser best_match o "Desconocido"
                                 name = res_json.get("name", "Desconocido")
                                 nuevas_etiquetas.append((name, ""))
                         elif mode_lower == "no hacer nada":
-                            # Sin llamada real (o la ignora)
                             nuevas_etiquetas.append(("", ""))
-
+                    
                     current_labels = nuevas_etiquetas
                     last_identification = time.time()
 
-                # Dibujar bounding boxes y nombres
+                # Dibujar bounding boxes y mostrar leyenda
                 for i, (x, y, w, h) in enumerate(faces):
                     label, emotion = current_labels[i]
-                    if label in ["Desconocido", "Error", "", "No detectado"]:
-                        box_color = UNKNOWN_COLOR
-                    else:
-                        # Si es un nombre registrado, asignar color
-                        if label not in st.session_state.registered_colors:
-                            st.session_state.registered_colors[label] = generate_random_color()
-                        box_color = st.session_state.registered_colors[label]
-
+                    mode_lower = st.session_state.current_mode.lower().strip()
+                    if mode_lower == "deteccion emociones":
+                        # Fijamos el color rojo (en BGR: (0, 0, 255)) para todos los bounding boxes
+                        box_color = (0, 0, 255)
+                        text = f"Emoción: {emotion}"
+                    elif mode_lower == "deteccion rostros":
+                        if label not in ["Desconocido", "Error", "", "No detectado"]:
+                            if label not in st.session_state.registered_colors:
+                                st.session_state.registered_colors[label] = generate_random_color()
+                            box_color = st.session_state.registered_colors[label]
+                        else:
+                            box_color = UNKNOWN_COLOR
+                        text = f"{label}"
+                    else:  # Deteccion completa
+                        if label not in ["Desconocido", "Error", "", "No detectado"]:
+                            if label not in st.session_state.registered_colors:
+                                st.session_state.registered_colors[label] = generate_random_color()
+                            box_color = st.session_state.registered_colors[label]
+                        else:
+                            box_color = UNKNOWN_COLOR
+                        text = f"{label} ({emotion})"
+                    
                     cv2.rectangle(frame, (x, y), (x+w, y+h), box_color, 2)
-                    text = f"{label} ({emotion})" if emotion else f"{label}"
                     cv2.putText(frame, text, (x, y-10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.9, box_color, 2)
 
                 feed_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), channels="RGB")
-                legend_placeholder.markdown(format_detected_labels(current_labels), unsafe_allow_html=True)
+                legend_placeholder.markdown(format_detected_labels(current_labels, st.session_state.current_mode), unsafe_allow_html=True)
                 time.sleep(0.03)
             cap.release()
     else:
