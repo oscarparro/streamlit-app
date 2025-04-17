@@ -7,8 +7,10 @@ import random
 import base64
 import datetime
 import face_recognition
+from io import BytesIO
+from PIL import Image
 
-# Configuración de la página y estilos CSS
+# Configuración de la página y estilos CSS (sin tocar)
 st.set_page_config(
     page_title="Face and Emotion Recognition System",
     page_icon="📷",
@@ -26,15 +28,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 #######################################################
-# CONFIGURACIÓN GLOBAL Y VARIABLES
+# CONFIGURACIÓN GLOBAL Y VARIABLES (sin tocar)
 #######################################################
-API_URL = "http://127.0.0.1:8000"  # Ajusta según sea necesario
+API_URL = "http://127.0.0.1:8000"
 
 prototxt_path = "model/deploy.prototxt"
 caffe_model_path = "model/res10_300x300_ssd_iter_140000.caffemodel"
 net = cv2.dnn.readNetFromCaffe(prototxt_path, caffe_model_path)
 
-# Intervalos de consulta a la API según modo
 MODE_INTERVALS = {
     "Deteccion completa": 10,
     "Deteccion emociones": 2,
@@ -42,10 +43,10 @@ MODE_INTERVALS = {
     "No hacer nada": 0
 }
 
-UNKNOWN_COLOR = (0, 255, 0)  # Color predeterminado (verde)
+UNKNOWN_COLOR = (0, 255, 0)
 
 # ------------------------------------------------------
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES (sin tocar)
 # ------------------------------------------------------
 def detect_faces_dnn(frame, net, conf_threshold=0.7):
     (h, w) = frame.shape[:2]
@@ -69,12 +70,6 @@ def generate_random_color():
     return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
 def format_detected_labels(labels, mode):
-    """
-    Formatea la leyenda según el modo:
-      - Deteccion completa: muestra nombre, emoción y color.
-      - Deteccion rostros: muestra solo el nombre y el color.
-      - Deteccion emociones: muestra la emoción y un color fijo (rojo) para todos los bounding boxes.
-    """
     html = "<b>Resultados:</b><br><br>"
     mode_lower = mode.lower().strip()
     
@@ -103,7 +98,6 @@ def format_detected_labels(labels, mode):
                 html += f"- {name}<br>"
 
     elif mode_lower == "deteccion emociones":
-        # Se usa color fijo (rojo) para todos los bounding boxes
         fixed_color_str = "rgb(255, 0, 0)"
         for idx, (_, emotion) in enumerate(labels):
             html += f"- Emoción: {emotion} <span style='display:inline-block;width:12px;height:12px;background-color:{fixed_color_str};border:1px solid #000;margin-left:4px;vertical-align:middle;'></span><br>"
@@ -113,36 +107,44 @@ def format_detected_labels(labels, mode):
     return html
 
 # ------------------------------------------------------
-# VARIABLES DE SESIÓN
+# CARGA DE REGISTROS PERSISTENTES (SIEMPRE)
 # ------------------------------------------------------
-if "registrations" not in st.session_state:
+try:
+    resp = requests.get(API_URL + "/list_faces")
+    if resp.status_code == 200:
+        st.session_state.registrations = resp.json()
+    else:
+        st.session_state.registrations = []
+except:
     st.session_state.registrations = []
-if "registered_colors" not in st.session_state:
-    st.session_state.registered_colors = {}
+
+# Reconstruimos el mapa de colores
+st.session_state.registered_colors = {
+    rec["name"]: tuple(rec["color"])
+    for rec in st.session_state.registrations
+}
+
+# Inicialización (solo la primera vez) de estos flags
 if "identification_active" not in st.session_state:
     st.session_state.identification_active = False
 if "current_mode" not in st.session_state:
     st.session_state.current_mode = "Deteccion completa"
 
 #######################################################
-# TÍTULO
+# TÍTULO Y TABS (sin tocar)
 #######################################################
 st.markdown('<div class="big-center-title">Proyecto de Detección e Identificación de Rostros</div>', unsafe_allow_html=True)
-
-#######################################################
-# CREAR TABS
-#######################################################
 st.markdown("""
     <style>
-    /* Apuntar a los botones con data-baseweb="tab" dentro del contenedor data-baseweb="tab-list" */
     [data-baseweb="tab-list"] button[data-baseweb="tab"] {
-        font-size: 30px !important;  /* Ajusta el tamaño a tu gusto */
-        font-weight: bold !important;/* Ejemplo: negrita */
-        padding: 0.5rem 1.5rem !important; /* Ajusta espaciados si lo deseas */
+        font-size: 30px !important;
+        font-weight: bold !important;
+        padding: 0.5rem 1.5rem !important;
     }
     </style>
     """, unsafe_allow_html=True)
 tab1, tab2, tab3 = st.tabs(["Registro de Rostro", "Identificación en Tiempo Real", "Historial de Registros"])
+
 
 #########################
 # PESTAÑA 1: REGISTRO
@@ -152,18 +154,17 @@ with tab1:
     img_file = st.camera_input("Captura de Rostro", label_visibility="collapsed")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Definimos el CSS para el botón centrado y su tamaño
     st.markdown(
         """
         <style>
         .centered-button-container {
             display: flex;
-            justify-content: center; /* Centra horizontalmente */
-            margin-top: 1rem;       /* Ajusta espaciado si quieres */
+            justify-content: center;
+            margin-top: 1rem;
         }
         .centered-button-container button {
-            width: 50% !important;   /* Ajusta el ancho (50%, 30%, etc.) */
-            height: 30px !important; /* Altura deseada */
+            width: 50% !important;
+            height: 30px !important;
             font-size: 16px !important;
         }
         </style>
@@ -173,7 +174,6 @@ with tab1:
 
     user_name = st.text_input("Nombre:", placeholder="Ingresa tu nombre", max_chars=20)
 
-    # Envolvemos st.button en un div con la clase "centered-button-container"
     st.markdown('<div class="centered-button-container">', unsafe_allow_html=True)
     clicked = st.button("Registrar")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -190,7 +190,7 @@ with tab1:
             if len(faces) != 1:
                 st.error(f"Para registrar, debe haber exactamente una cara (detectadas: {len(faces)})")
             else:
-                (x, y, w, h) = faces[0]
+                x, y, w, h = faces[0]
                 face_img = frame[y:y+h, x:x+w]
                 _, img_encoded = cv2.imencode('.jpg', face_img)
                 files = {'file': ('face.jpg', img_encoded.tobytes(), 'image/jpeg')}
@@ -201,21 +201,18 @@ with tab1:
                 except Exception:
                     st.error("Error al decodificar la respuesta del servidor: " + res.text)
                     st.stop()
-                if "message" in result:
-                    if user_name not in st.session_state.registered_colors:
-                        st.session_state.registered_colors[user_name] = generate_random_color()
+
+                if "record" in result:
+                    rec = result["record"]
+                    st.session_state.registrations.append(rec)
+                    st.session_state.registered_colors[rec["name"]] = tuple(rec["color"])
                     st.success("¡Registro exitoso!")
-                    time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    _, encoded_img = cv2.imencode('.jpg', face_img)
-                    face_img_b64 = base64.b64encode(encoded_img).decode("utf-8")
-                    st.session_state.registrations.append({
-                        "time": time_str,
-                        "name": user_name,
-                        "color": st.session_state.registered_colors[user_name],
-                        "image_b64": face_img_b64
-                    })
                 else:
                     st.error("Error en el registro: " + str(result))
+
+# Ensure the camera is released when leaving the tab
+if "cap" in locals() and cap.isOpened():
+    cap.release()
 
 #########################
 # PESTAÑA 2: IDENTIFICACIÓN EN TIEMPO REAL
@@ -236,13 +233,11 @@ with tab2:
         unsafe_allow_html=True,
     )
 
-    # Selección de modo
     modo = st.selectbox(
         "Selecciona el modo de funcionamiento",
-        options=["Deteccion completa", "Deteccion emociones", "Deteccion rostros", "No hacer nada"],
-        index=["Deteccion completa", "Deteccion emociones", "Deteccion rostros", "No hacer nada"].index(st.session_state.current_mode)
+        options=list(MODE_INTERVALS.keys()),
+        index=list(MODE_INTERVALS.keys()).index(st.session_state.current_mode)
     )
-    # Si el modo cambia, se reinicia la cámara para aplicar la nueva configuración
     if modo != st.session_state.current_mode:
         st.session_state.current_mode = modo
         st.session_state.identification_active = False
@@ -264,7 +259,7 @@ with tab2:
     legend_placeholder = st.empty()
 
     if st.session_state.identification_active:
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Prueba usando CAP_DSHOW si es Windows
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
@@ -281,14 +276,12 @@ with tab2:
                     st.error("No se pudo capturar el frame.")
                     break
 
-                frame = cv2.flip(frame, 1)  # Vista espejo
+                frame = cv2.flip(frame, 1)
                 faces = detect_faces_dnn(frame, net, conf_threshold=0.7)
 
-                # Actualiza la lista de labels si cambia el número de rostros
                 if len(current_labels) != len(faces):
                     current_labels = [("Desconocido", "N/A")] * len(faces)
 
-                # Consulta a la API si ha transcurrido el intervalo definido
                 if interval > 0 and time.time() - last_identification >= interval:
                     nuevas_etiquetas = []
                     mode_lower = st.session_state.current_mode.lower().strip()
@@ -308,45 +301,34 @@ with tab2:
                             emotion = res_json.get("emotion", "N/A")
                             nuevas_etiquetas.append((name, emotion))
                         elif mode_lower == "deteccion emociones":
-                            name = res_json.get("name", "N/A")
                             emotion = res_json.get("emotion", "N/A")
-                            nuevas_etiquetas.append((name, emotion))
+                            nuevas_etiquetas.append(("N/A", emotion))
                         elif mode_lower == "deteccion rostros":
                             if "error" in res_json:
                                 nuevas_etiquetas.append(("No detectado", ""))
                             else:
                                 name = res_json.get("name", "Desconocido")
                                 nuevas_etiquetas.append((name, ""))
-                        elif mode_lower == "no hacer nada":
+                        else:
                             nuevas_etiquetas.append(("", ""))
                     
                     current_labels = nuevas_etiquetas
                     last_identification = time.time()
 
-                # Dibujar bounding boxes y mostrar leyenda
                 for i, (x, y, w, h) in enumerate(faces):
                     label, emotion = current_labels[i]
                     mode_lower = st.session_state.current_mode.lower().strip()
                     if mode_lower == "deteccion emociones":
-                        # Fijamos el color rojo (en BGR: (0, 0, 255)) para todos los bounding boxes
                         box_color = (0, 0, 255)
-                        text = f"Emocion: {emotion}"
-                    elif mode_lower == "deteccion rostros":
+                        text = f"Emoción: {emotion}"
+                    else:
                         if label not in ["Desconocido", "Error", "", "No detectado"]:
                             if label not in st.session_state.registered_colors:
                                 st.session_state.registered_colors[label] = generate_random_color()
                             box_color = st.session_state.registered_colors[label]
                         else:
                             box_color = UNKNOWN_COLOR
-                        text = f"{label}"
-                    else:  # Deteccion completa
-                        if label not in ["Desconocido", "Error", "", "No detectado"]:
-                            if label not in st.session_state.registered_colors:
-                                st.session_state.registered_colors[label] = generate_random_color()
-                            box_color = st.session_state.registered_colors[label]
-                        else:
-                            box_color = UNKNOWN_COLOR
-                        text = f"{label} ({emotion})"
+                        text = f"{label} ({emotion})" if "completa" in mode_lower else label
                     
                     cv2.rectangle(frame, (x, y), (x+w, y+h), box_color, 2)
                     cv2.putText(frame, text, (x, y-10),
@@ -363,25 +345,44 @@ with tab2:
 # PESTAÑA 3: HISTORIAL
 #########################
 with tab3:
-    if len(st.session_state.registrations) == 0:
+    # 1) Pedimos al API la lista actualizada
+    try:
+        resp = requests.get(API_URL + "/list_faces")
+        regs = resp.json() if resp.status_code == 200 else []
+    except:
+        st.error("Actualiza para cargar los rostros registrados.")
+        regs = []
+
+    if not regs:
         st.info("No hay registros aún.")
     else:
-        for reg in st.session_state.registrations:
-            b, g, r = reg["color"]
-            color_str = f"rgb({r},{g},{b})"
-            html = f"""
-            <div style="display: flex; align-items: center; margin-bottom: 1em; border-bottom: 1px solid #ddd; padding-bottom: 1em;">
-                <div style="flex: 1;">
-                    <img src="data:image/jpeg;base64,{reg['image_b64']}" style="width:100px; height:auto;" />
-                </div>
-                <div style="flex: 2; margin-left: 1em; font-size: 1rem;">
-                    <p style="margin: 0;"><b>Fecha y Hora:</b> {reg['time']}</p>
-                    <p style="margin: 0;"><b>Nombre:</b> {reg['name']}</p>
-                    <p style="margin: 0;">
-                        <b>Color:</b> 
-                        <span style="display:inline-block;width:12px;height:12px;background-color:{color_str};border:1px solid #000;margin-left:4px;vertical-align:middle;"></span>
-                    </p>
-                </div>
-            </div>
-            """
-            st.markdown(html, unsafe_allow_html=True)
+        for reg in regs:
+            # Tres columnas: imagen, datos y botón
+            col_img, col_data, col_btn = st.columns([1, 4, 1])
+
+            # Imagen (decodificamos base64)
+            with col_img:
+                img_bytes = base64.b64decode(reg["image_b64"])
+                st.image(img_bytes, width=100)
+
+            # Datos
+            with col_data:
+                r, g, b = reg["color"]
+                color_str = f"rgb({b},{g},{r})"
+                st.markdown(f"""
+                            **Fecha y Hora:** {reg['time']}  
+                            **Nombre:** {reg['name']}  
+                            **Color:** <span style='display:inline-block;width:12px;height:12px;background-color:{color_str};border:1px solid #000;vertical-align:middle;'></span>
+                            """, unsafe_allow_html=True)
+
+            # Botón pequeño integrado
+            with col_btn:
+                if st.button("Eliminar", key=reg["id"]):
+                    d = requests.post(API_URL + "/delete_face", data={"id": reg["id"]})
+                    if d.status_code == 200:
+                        st.success(f"Registro eliminado.")
+                    else:
+                        st.error("Error al eliminar el registro.")
+
+            # Línea separadora
+            st.markdown("<hr>", unsafe_allow_html=True)
