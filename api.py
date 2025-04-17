@@ -9,7 +9,6 @@ import cv2
 import face_recognition
 import io
 from PIL import Image
-
 import os
 import json
 import uuid
@@ -27,13 +26,13 @@ app.add_middleware(
 )
 
 #############################
-# Detector DNN para identificación
+# DNN y Modelo de emociones
 #############################
+
 prototxt_path = "model/deploy.prototxt"
 caffe_model_path = "model/res10_300x300_ssd_iter_140000.caffemodel"
 net = cv2.dnn.readNetFromCaffe(prototxt_path, caffe_model_path)
 
-# Emoción
 emotion_model_name = "oscarparro/emotion_detection_vit"
 emotion_model = AutoModelForImageClassification.from_pretrained(emotion_model_name)
 transform = transforms.Compose([
@@ -81,7 +80,6 @@ def load_registered_faces():
     try:
         with open(REGISTERED_FACES_FILE, "r") as f:
             data = json.load(f)
-        # reconvertir encoding a ndarray
         for rec in data.values():
             rec["encoding"] = np.array(rec["encoding"])
         return data
@@ -101,7 +99,6 @@ def save_registered_faces():
     with open(REGISTERED_FACES_FILE, "w") as f:
         json.dump(serial, f, indent=2)
 
-# Cargamos los registros al iniciar
 registered_faces = load_registered_faces()
 
 ###########################################
@@ -133,7 +130,8 @@ async def register_face(name: str = Form(...), file: UploadFile = File(...)):
     encoding = encs[0]
     color = [random.randint(0, 255) for _ in range(3)]
     time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # face_img está en RGB, OpenCV espera BGR → convertimos
+
+    # face_img está en RGB, OpenCV espera BGR asi que convertimos
     face_bgr = cv2.cvtColor(face_img, cv2.COLOR_RGB2BGR)
     _, buf = cv2.imencode('.jpg', face_bgr)
     image_b64 = base64.b64encode(buf).decode()

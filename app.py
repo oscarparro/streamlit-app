@@ -28,7 +28,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 #######################################################
-# CONFIGURACIÓN GLOBAL Y VARIABLES (sin tocar)
+# CONFIGURACIÓN GLOBAL Y VARIABLES
 #######################################################
 API_URL = "http://127.0.0.1:8000"
 
@@ -45,9 +45,7 @@ MODE_INTERVALS = {
 
 UNKNOWN_COLOR = (0, 255, 0)
 
-# ------------------------------------------------------
-# FUNCIONES AUXILIARES (sin tocar)
-# ------------------------------------------------------
+
 def detect_faces_dnn(frame, net, conf_threshold=0.7):
     (h, w) = frame.shape[:2]
     blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300),
@@ -107,7 +105,7 @@ def format_detected_labels(labels, mode):
     return html
 
 # ------------------------------------------------------
-# CARGA DE REGISTROS PERSISTENTES (SIEMPRE)
+# CARGA DE REGISTROS PERSISTENTES
 # ------------------------------------------------------
 try:
     resp = requests.get(API_URL + "/list_faces")
@@ -130,9 +128,9 @@ if "identification_active" not in st.session_state:
 if "current_mode" not in st.session_state:
     st.session_state.current_mode = "Deteccion completa"
 
-#######################################################
-# TÍTULO Y TABS (sin tocar)
-#######################################################
+#################
+# TÍTULO Y TABS
+#################
 st.markdown('<div class="big-center-title">Proyecto de Detección e Identificación de Rostros</div>', unsafe_allow_html=True)
 st.markdown("""
     <style>
@@ -143,81 +141,12 @@ st.markdown("""
     }
     </style>
     """, unsafe_allow_html=True)
-tab1, tab2, tab3 = st.tabs(["Registro de Rostro", "Identificación en Tiempo Real", "Historial de Registros"])
+tab1, tab2, tab3 = st.tabs(["Identificación en Tiempo Real", "Registro de Rostro", "Historial de Registros"])
 
-
-#########################
-# PESTAÑA 1: REGISTRO
-#########################
+##########################################
+# PESTAÑA 1: IDENTIFICACIÓN EN TIEMPO REAL
+##########################################
 with tab1:
-    st.markdown('<div class="camera-block">', unsafe_allow_html=True)
-    img_file = st.camera_input("Captura de Rostro", label_visibility="collapsed")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <style>
-        .centered-button-container {
-            display: flex;
-            justify-content: center;
-            margin-top: 1rem;
-        }
-        .centered-button-container button {
-            width: 50% !important;
-            height: 30px !important;
-            font-size: 16px !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    user_name = st.text_input("Nombre:", placeholder="Ingresa tu nombre", max_chars=20)
-
-    st.markdown('<div class="centered-button-container">', unsafe_allow_html=True)
-    clicked = st.button("Registrar")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if clicked:
-        if img_file is None:
-            st.error("Por favor, toma una foto primero.")
-        elif user_name.strip() == "":
-            st.error("Ingresa un nombre.")
-        else:
-            file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
-            frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-            faces = detect_faces_dnn(frame, net, conf_threshold=0.7)
-            if len(faces) != 1:
-                st.error(f"Para registrar, debe haber exactamente una cara (detectadas: {len(faces)})")
-            else:
-                x, y, w, h = faces[0]
-                face_img = frame[y:y+h, x:x+w]
-                _, img_encoded = cv2.imencode('.jpg', face_img)
-                files = {'file': ('face.jpg', img_encoded.tobytes(), 'image/jpeg')}
-                data = {'name': user_name}
-                res = requests.post(API_URL + "/register_face", files=files, data=data)
-                try:
-                    result = res.json()
-                except Exception:
-                    st.error("Error al decodificar la respuesta del servidor: " + res.text)
-                    st.stop()
-
-                if "record" in result:
-                    rec = result["record"]
-                    st.session_state.registrations.append(rec)
-                    st.session_state.registered_colors[rec["name"]] = tuple(rec["color"])
-                    st.success("¡Registro exitoso!")
-                else:
-                    st.error("Error en el registro: " + str(result))
-
-# Ensure the camera is released when leaving the tab
-if "cap" in locals() and cap.isOpened():
-    cap.release()
-
-#########################
-# PESTAÑA 2: IDENTIFICACIÓN EN TIEMPO REAL
-#########################
-with tab2:
     st.markdown(
         """
         <style>
@@ -228,46 +157,60 @@ with tab2:
             display: block;
             margin: 0 auto;
         }
+        .mode-selector {
+            margin-bottom: 1rem;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    modo = st.selectbox(
-        "Selecciona el modo de funcionamiento",
-        options=list(MODE_INTERVALS.keys()),
-        index=list(MODE_INTERVALS.keys()).index(st.session_state.current_mode)
-    )
-    if modo != st.session_state.current_mode:
-        st.session_state.current_mode = modo
-        st.session_state.identification_active = False
-        st.stop()
+    # --- FORM para seleccionar y aplicar el modo ---
+    with st.form("mode_form", clear_on_submit=False):
+        cols = st.columns([3, 1], gap="small")
+        with cols[0]:
+            selected_mode = st.selectbox("",
+                label_visibility="collapsed",
+                options=list(MODE_INTERVALS.keys()),
+                index=list(MODE_INTERVALS.keys()).index(st.session_state.current_mode),
+                key="sel_mode",
+            )
+        with cols[1]:
+            apply = st.form_submit_button("Aplicar Modo")
 
-    col1, col2, col3 = st.columns([1, 2, 1], gap="small")
+    if apply:
+        # solo al hacer click lo actualizamos
+        if selected_mode != st.session_state.current_mode:
+            st.session_state.current_mode = selected_mode
+            st.session_state.identification_active = False
+
+    # --- Botones para activar / detener cámara ---
+    col1, col2, col3 = st.columns([1,2,1], gap="small")
     with col2:
-        subcolA, subcolB = st.columns([1, 1], gap="small")
+        subcolA, subcolB = st.columns([1,1], gap="small")
         with subcolA:
-            if st.button("Activar Cámara"):
+            if st.button("Activar Cámara", key="id_activate"):
                 st.session_state.identification_active = True
         with subcolB:
-            if st.button("Detener Cámara"):
+            if st.button("Detener Cámara", key="id_deactivate"):
                 st.session_state.identification_active = False
 
+    # --- Placeholders para el feed y la leyenda ---
     st.markdown('<div class="camera-block">', unsafe_allow_html=True)
     feed_placeholder = st.empty()
     st.markdown("</div>", unsafe_allow_html=True)
     legend_placeholder = st.empty()
 
+    # --- Lógica de captura y dibujado unificado ---
     if st.session_state.identification_active:
         cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
         if not cap.isOpened():
             st.error("No se pudo abrir la cámara.")
         else:
-            last_identification = time.time()
-            current_labels = []
+            last_ident = time.time()
+            labels = []
             interval = MODE_INTERVALS[st.session_state.current_mode]
 
             while st.session_state.identification_active:
@@ -277,75 +220,128 @@ with tab2:
                     break
 
                 frame = cv2.flip(frame, 1)
-                faces = detect_faces_dnn(frame, net, conf_threshold=0.7)
+                faces = detect_faces_dnn(frame, net)
 
-                if len(current_labels) != len(faces):
-                    current_labels = [("Desconocido", "N/A")] * len(faces)
+                if len(labels) != len(faces):
+                    labels = [("Desconocido","N/A")] * len(faces)
 
-                if interval > 0 and time.time() - last_identification >= interval:
-                    nuevas_etiquetas = []
-                    mode_lower = st.session_state.current_mode.lower().strip()
-                    for (x, y, w, h) in faces:
-                        face_img = frame[y:y+h, x:x+w]
-                        _, img_encoded = cv2.imencode('.jpg', face_img)
-                        files = {'file': ('face.jpg', img_encoded.tobytes(), 'image/jpeg')}
-                        data = {'mode': st.session_state.current_mode}
-                        res = requests.post(API_URL + "/identify_face", files=files, data=data)
+                if interval > 0 and time.time() - last_ident >= interval:
+                    new_labels = []
+                    ml = st.session_state.current_mode.lower().strip()
+                    for (x,y,w,h) in faces:
+                        face = frame[y:y+h, x:x+w]
+                        _, buf = cv2.imencode('.jpg', face)
+                        res = requests.post(
+                            API_URL+"/identify_face",
+                            files={'file':('face.jpg',buf.tobytes(),'image/jpeg')},
+                            data={'mode': st.session_state.current_mode}
+                        )
                         try:
-                            res_json = res.json()
-                        except Exception:
-                            res_json = {"name": "Error", "emotion": "N/A"}
-                        
-                        if mode_lower == "deteccion completa":
-                            name = res_json.get("name", "Desconocido")
-                            emotion = res_json.get("emotion", "N/A")
-                            nuevas_etiquetas.append((name, emotion))
-                        elif mode_lower == "deteccion emociones":
-                            emotion = res_json.get("emotion", "N/A")
-                            nuevas_etiquetas.append(("N/A", emotion))
-                        elif mode_lower == "deteccion rostros":
-                            if "error" in res_json:
-                                nuevas_etiquetas.append(("No detectado", ""))
-                            else:
-                                name = res_json.get("name", "Desconocido")
-                                nuevas_etiquetas.append((name, ""))
-                        else:
-                            nuevas_etiquetas.append(("", ""))
-                    
-                    current_labels = nuevas_etiquetas
-                    last_identification = time.time()
+                            j = res.json()
+                        except:
+                            j = {"name":"Error","emotion":"N/A"}
+                        new_labels.append((j.get("name","Desconocido"), j.get("emotion","N/A")))
+                    labels = new_labels
+                    last_ident = time.time()
 
-                for i, (x, y, w, h) in enumerate(faces):
-                    label, emotion = current_labels[i]
-                    mode_lower = st.session_state.current_mode.lower().strip()
-                    if mode_lower == "deteccion emociones":
-                        box_color = (0, 0, 255)
-                        text = f"Emoción: {emotion}"
+                for i,(x,y,w,h) in enumerate(faces):
+                    name, emo = labels[i]
+                    ml = st.session_state.current_mode.lower().strip()
+                    if "emociones" in ml:
+                        color = (0,0,255); text=f"Emoción: {emo}"
                     else:
-                        if label not in ["Desconocido", "Error", "", "No detectado"]:
-                            if label not in st.session_state.registered_colors:
-                                st.session_state.registered_colors[label] = generate_random_color()
-                            box_color = st.session_state.registered_colors[label]
-                        else:
-                            box_color = UNKNOWN_COLOR
-                        text = f"{label} ({emotion})" if "completa" in mode_lower else label
-                    
-                    cv2.rectangle(frame, (x, y), (x+w, y+h), box_color, 2)
-                    cv2.putText(frame, text, (x, y-10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, box_color, 2)
+                        color = st.session_state.registered_colors.get(name, UNKNOWN_COLOR)
+                        text = f"{name} ({emo})" if "completa" in ml else name
+                    cv2.rectangle(frame,(x,y),(x+w,y+h),color,2)
+                    cv2.putText(frame, text, (x,y-10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
-                feed_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), channels="RGB")
-                legend_placeholder.markdown(format_detected_labels(current_labels, st.session_state.current_mode), unsafe_allow_html=True)
+                feed_placeholder.image(cv2.cvtColor(frame,cv2.COLOR_BGR2RGB), channels="RGB")
+                legend_placeholder.markdown(format_detected_labels(labels, st.session_state.current_mode),
+                                           unsafe_allow_html=True)
                 time.sleep(0.03)
             cap.release()
     else:
         st.info("La cámara está detenida.")
 
 #########################
+# PESTAÑA 2: REGISTRO
+#########################
+with tab2:
+    # 1) Inicializa el flag (solo la primera vez)
+    if "register_mode" not in st.session_state:
+        st.session_state.register_mode = False
+
+    # 2) Botón que alterna entre mostrar/ocultar
+    if st.button("Activar Registro", key="toggle_register"):
+        st.session_state.register_mode = not st.session_state.register_mode
+
+    # 3) Si el flag está activo, mostramos todo el UI de captura
+    if st.session_state.register_mode:
+        st.markdown('<div class="camera-block">', unsafe_allow_html=True)
+        img_file = st.camera_input("Captura de Rostro", label_visibility="collapsed")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown(
+            """
+            <style>
+            .centered-button-container {
+                display: flex;
+                justify-content: center;
+                margin-top: 1rem;
+            }
+            .centered-button-container button {
+                width: 50% !important;
+                height: 30px !important;
+                font-size: 16px !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        user_name = st.text_input("Nombre:", placeholder="Ingresa tu nombre", max_chars=20, key="reg_name")
+
+        st.markdown('<div class="centered-button-container">', unsafe_allow_html=True)
+        clicked = st.button("Registrar", key="reg_submit")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if clicked:
+            if img_file is None:
+                st.error("Por favor, toma una foto primero.")
+            elif user_name.strip() == "":
+                st.error("Ingresa un nombre.")
+            else:
+                file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+                frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                faces = detect_faces_dnn(frame, net, conf_threshold=0.7)
+                if len(faces) != 1:
+                    st.error(f"Para registrar, debe haber exactamente una cara (detectadas: {len(faces)})")
+                else:
+                    x, y, w, h = faces[0]
+                    face_img = frame[y:y+h, x:x+w]
+                    _, img_encoded = cv2.imencode('.jpg', face_img)
+                    files = {'file': ('face.jpg', img_encoded.tobytes(), 'image/jpeg')}
+                    data = {'name': user_name}
+                    res = requests.post(API_URL + "/register_face", files=files, data=data)
+                    try:
+                        result = res.json()
+                    except Exception:
+                        st.error("Error al decodificar la respuesta del servidor: " + res.text)
+                        st.stop()
+
+                    if "record" in result:
+                        rec = result["record"]
+                        st.session_state.registrations.append(rec)
+                        st.session_state.registered_colors[rec["name"]] = tuple(rec["color"])
+                        st.success("¡Registro exitoso!")
+                    else:
+                        st.error("Error en el registro: " + str(result))
+
+#########################
 # PESTAÑA 3: HISTORIAL
 #########################
 with tab3:
-    # 1) Pedimos al API la lista actualizada
     try:
         resp = requests.get(API_URL + "/list_faces")
         regs = resp.json() if resp.status_code == 200 else []
