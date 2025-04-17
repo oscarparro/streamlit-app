@@ -8,7 +8,6 @@ import numpy as np
 import cv2
 import face_recognition
 import io
-import os, json
 from PIL import Image
 
 app = FastAPI()
@@ -40,8 +39,6 @@ transform = transforms.Compose([
     transforms.Normalize([0.5], [0.5])  # Normalización simple
 ])
 
-# Path para guardar los rostros registrados
-STORAGE_PATH = "data/registered_faces.json"
 
 def detect_faces_dnn_api(image, net, conf_threshold=0.7):
     """
@@ -79,19 +76,8 @@ def predict_emotion(face_img):
     emotion_label = emotion_model.config.id2label[emotion_idx]
     return emotion_label
 
-def load_registered():
-    if not os.path.exists(STORAGE_PATH):
-        return {}
-    with open(STORAGE_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_registered(d):
-    os.makedirs(os.path.dirname(STORAGE_PATH), exist_ok=True)
-    with open(STORAGE_PATH, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=2)
-
 # Diccionario global para rostros registrados: nombre -> encoding facial
-registered_faces = load_registered()
+registered_faces = {}
 
 ###########################################
 # Endpoint de Registro
@@ -121,13 +107,7 @@ async def register_face(name: str = Form(...), file: UploadFile = File(...)):
         return JSONResponse(content={"error": "No se pudo extraer el encoding facial."}, status_code=400)
     
     encoding = face_encodings[0]
-    encoding_list = encoding.tolist()
-    registered_faces[name] = {
-        "encoding": encoding_list,
-        "color": list(stored_color),   # tu color en session_state
-        "timestamp": datetime.utcnow().isoformat()
-    }
-save_registered(registered_faces)
+    registered_faces[name] = encoding
     return {"message": f"Rostro de '{name}' registrado correctamente."}
 
 ###########################################
@@ -220,21 +200,3 @@ async def identify_face(
 
     else:
         return JSONResponse(content={"error": f"Modo no reconocido: {mode}"}, status_code=400)
-
-###########################################
-# Endpoints de listar Rostros y borrarlos
-###########################################
-@app.get("/registered_faces")
-def list_faces():
-    return registered_faces
-
-@app.delete("/registered_faces/{name}")
-def delete_face(name: str):
-    if name in registered_faces:
-        del registered_faces[name]
-        save_registered(registered_faces)
-        return {"message": f"'{name}' borrado."}
-    else:
-        return JSONResponse({"error": "No existe"}, status_code=404)
-
-
