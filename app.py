@@ -132,7 +132,17 @@ st.markdown('<div class="big-center-title">Proyecto de Detección e Identificaci
 #######################################################
 # CREAR TABS
 #######################################################
-tab1, tab2, tab3 = st.tabs(["Registro de Rostro", "Identificación en Tiempo Real", "Historial"])
+st.markdown("""
+    <style>
+    /* Apuntar a los botones con data-baseweb="tab" dentro del contenedor data-baseweb="tab-list" */
+    [data-baseweb="tab-list"] button[data-baseweb="tab"] {
+        font-size: 30px !important;  /* Ajusta el tamaño a tu gusto */
+        font-weight: bold !important;/* Ejemplo: negrita */
+        padding: 0.5rem 1.5rem !important; /* Ajusta espaciados si lo deseas */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+tab1, tab2, tab3 = st.tabs(["Registro de Rostro", "Identificación en Tiempo Real", "Historial de Registros"])
 
 #########################
 # PESTAÑA 1: REGISTRO
@@ -362,7 +372,7 @@ with tab3:
             html = f"""
             <div style="display: flex; align-items: center; margin-bottom: 1em; border-bottom: 1px solid #ddd; padding-bottom: 1em;">
                 <div style="flex: 1;">
-                    <img src="data:image/jpeg;base64,{reg['image_b64']}" style="width:200px; height:auto;" />
+                    <img src="data:image/jpeg;base64,{reg['image_b64']}" style="width:100px; height:auto;" />
                 </div>
                 <div style="flex: 2; margin-left: 1em; font-size: 1rem;">
                     <p style="margin: 0;"><b>Fecha y Hora:</b> {reg['time']}</p>
